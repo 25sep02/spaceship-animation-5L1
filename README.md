@@ -1,4 +1,7 @@
 # spaceship-animation-5L1
+
+*** Deployment web-link: https://25sep02.github.io/spaceship-animation-5L1/
+
 Jet-rocket in space. Zoom in/out. Blast off. Make clones.
 
 From Phaser.io downloaded Phaser Launcher app. Used image assets and some code from the 'basic template' project.
