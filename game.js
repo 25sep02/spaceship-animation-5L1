@@ -74,7 +74,7 @@ class scene_A extends Phaser.Scene {
     this.phaser_keolot.setFlipX(false);
     this.phaser_keolot.setFlipY(false);
 
-    this.text_6ULoO67I = this.add.text(490, 546, '- Click logo to start.\n- Arrow up-down: zoom in-out on spaceship.\n- Right arrow: hold to fly-off, release to stop.\n- Left arrow: spawn spaceship (max 30, 15s fly-off).\n', {
+    this.text_6ULoO67I = this.add.text(490, 546, '- Click logo to start.\n- Arrow up-down: zoom in-out on spaceship.\n- Right arrow: fly off-screen.\n- Spacebar: fly back on-screen.\n- Left arrow: spawn spaceship (max 30, 20s fly-off).\n', {
     "fontFamily": "Arial, Helvetica, sans-serif",
     "fontSize": "40px",
     "color": "#bec837",
@@ -581,10 +581,6 @@ this.SPACE.on('up', () => {
     }
   });
  });
-
-
-
-
 
     // [end-create]
   }
