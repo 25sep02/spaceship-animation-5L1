@@ -367,17 +367,34 @@ this.RIGHT.on('up', () => {
 });
 
 
-// on each press of left-arrow, spawn a non-physics sprite copy at random position
+// on each press of left-arrow, spawn a non-physics sprite copy that flies in from the left
 this.LEFT.on('down', () => {
   if (!this.sprite_spaceship) { return; }
+  // play fly-off sound immediately as a one-shot
+  try {
+    if (this.sound && this.sound.context && this.sound.context.state === 'suspended') {
+      this.sound.context.resume().then(() => {
+        this.sound.play('audio_flyoff', { loop: false, volume: 1.0 });
+      }).catch(() => {
+        this.sound.play('audio_flyoff', { loop: false, volume: 1.0 });
+      });
+    } else {
+      this.sound.play('audio_flyoff', { loop: false, volume: 1.0 });
+    }
+  } catch (e) {
+    // ignore audio playback errors
+  }
   // enforce maximum of spawned copies
   if (this._spawnedCopies.length >= this._maxSpawnedCopies) {
     return;
   }
-  const x = Phaser.Math.Between(0, this.scale.width);
-  const y = Phaser.Math.Between(0, this.scale.height);
+  // pick a final destination somewhere on-screen (with some padding)
+  const finalX = Phaser.Math.Between(50, Math.max(50, this.scale.width - 50));
+  const finalY = Phaser.Math.Between(50, Math.max(50, this.scale.height - 50));
+  // start off-screen to the left
+  const startX = -100;
   // create a non-physics sprite (no Matter body) using the same spritesheet key
-  const copy = this.add.sprite(x, y, 'spritesheet_spaceship', 0);
+  const copy = this.add.sprite(startX, finalY, 'spritesheet_spaceship', 0);
   copy.setScale(1, 1);
   copy.setOrigin(0.5, 0.5);
   copy.setVisible(true);
@@ -390,6 +407,17 @@ this.LEFT.on('down', () => {
     copy.play('shipFly');
   }
   this._spawnedCopies.push(copy);
+
+  // Tween the copy into its final position from the left
+  const entryDistance = Math.abs(finalX - startX);
+  const entrySpeed = 600; // px/sec
+  const entryDuration = Math.max(250, Math.round((entryDistance / entrySpeed) * 1000));
+  copy._entryTween = this.tweens.add({
+    targets: copy,
+    x: finalX,
+    duration: entryDuration,
+    ease: 'Quad.easeOut'
+  });
 
   // After 20 seconds, start moving the copy off to the right and destroy when off-screen
   const delayMs = 20000; // 20 seconds
