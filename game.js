@@ -190,6 +190,7 @@ class scene_B extends Phaser.Scene {
     this.DOWN = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.DOWN);
     this.RIGHT = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.RIGHT);
     this.LEFT = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.LEFT);
+    this.SPACE = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
 
     this.sprite_spaceship = this.matter.add.sprite(889, 496, 'spritesheet_spaceship', null, {
     "isStatic": false,
@@ -262,9 +263,14 @@ this._maxSpawnedCopies = 30;
 // spaceship acceleration state
 this._spaceshipAccelerating = false;
 this._spaceshipSpeed = 0; // px/s
-this._spaceshipMaxSpeed = 1200; // px/s (tunable)
+this._spaceshipMaxSpeed = 600; // px/s (tunable) -- reduced to half for slower fly-off
 this._spaceshipAccel = 600; // px/s^2 (tunable)
 this._spaceshipDecel = 800; // px/s^2 when key released (tunable)
+// exit speed to match spawned copies (px/sec). Spawned copies use `400 * 5`.
+this._spaceshipExitSpeed = 400 * 5;
+// When true the main spaceship is in a one-way fly-off state and should
+// continue moving right until off-screen (but not be destroyed).
+this._spaceshipFlyingOff = false;
 
 this.sprite_spaceship.play("shipFly");
 
@@ -341,29 +347,59 @@ this.RIGHT.on('down', () => {
   // If ship already left screen, ignore
   const rightEdge = this.scale.width + (this.sprite_spaceship.displayWidth || 0) / 2;
   if (this.sprite_spaceship.x > rightEdge) { return; }
-  this._spaceshipAccelerating = true;
-  // keep current speed (do not reset) so repeated presses preserve momentum
-  // play fly-off sound if available
+  // Enter one-way fly-off mode: ship should continue moving right without stopping.
+  this._spaceshipFlyingOff = true;
+  // Stop any physics velocity so tween controls movement cleanly
+  if (this.sprite_spaceship && this.sprite_spaceship.body) {
+    this.sprite_spaceship.setVelocityX(0);
+  }
+  // Compute the destination and duration using the same logic as spawned copies
+  const endX = this.scale.width + (this.sprite_spaceship.displayWidth || 0) / 2 + 50;
+  const speed = this._spaceshipExitSpeed; // px/sec
+  const distance = Math.max(0, endX - this.sprite_spaceship.x);
+  const duration = Math.max(200, Math.round((distance / speed) * 1000));
+  // Tween a small object and update the Matter sprite position on each frame
+  const tweenObj = { x: this.sprite_spaceship.x };
+  this._spaceshipExitTween = this.tweens.add({
+    targets: tweenObj,
+    x: endX,
+    duration: duration,
+    ease: 'Linear',
+    onUpdate: () => {
+      if (this.sprite_spaceship && this.sprite_spaceship.body) {
+        this.sprite_spaceship.setPosition(tweenObj.x, this.sprite_spaceship.y);
+      } else if (this.sprite_spaceship) {
+        this.sprite_spaceship.x = tweenObj.x;
+      }
+    },
+    onComplete: () => {
+      // Do not destroy the sprite; leave it off-screen. Clear the flying flag so
+      // other logic can run if needed (the x check prevents retriggering).
+      this._spaceshipFlyingOff = false;
+    }
+  });
+  // Play the fly-off sound as a one-shot (do not loop). Ensure audio context resumed.
   try {
-    if (this.flyoffSound && !this.flyoffSound.isPlaying) {
-      this.flyoffSound.play();
+    if (this.sound && this.sound.context && this.sound.context.state === 'suspended') {
+      this.sound.context.resume().then(() => {
+        this.sound.play('audio_flyoff', { loop: false, volume: 1.0 });
+      }).catch(() => {
+        this.sound.play('audio_flyoff', { loop: false, volume: 1.0 });
+      });
+    } else {
+      this.sound.play('audio_flyoff', { loop: false, volume: 1.0 });
     }
   } catch (e) {
-    // ignore playback errors (audio context may be suspended until user interaction)
+    // ignore audio playback errors
   }
+  // Tween will handle movement; no immediate physics velocity needed.
 });
 
 this.RIGHT.on('up', () => {
   // stop increasing speed when key released
   this._spaceshipAccelerating = false;
-  // stop fly-off sound if playing
-  try {
-    if (this.flyoffSound && this.flyoffSound.isPlaying) {
-      this.flyoffSound.stop();
-    }
-  } catch (e) {
-    // ignore
-  }
+  // Do not stop the one-shot fly-off sound here. If the ship is in
+  // `_spaceshipFlyingOff` mode it will continue to the right without stopping.
 });
 
 
@@ -464,6 +500,87 @@ this.LEFT.on('down', () => {
 });
 
 
+this.SPACE.on('up', () => {
+  // If the main spaceship is not currently on-screen, play the fly-off
+  // sound once and tween the ship in from the left to the center of the screen.
+  if (!this.sprite_spaceship) { return; }
+  const shipHalfW = (this.sprite_spaceship.displayWidth || 100) / 2;
+  const offLeft = this.sprite_spaceship.x < -shipHalfW;
+  const offRight = this.sprite_spaceship.x > this.scale.width + shipHalfW;
+  const notVisible = !this.sprite_spaceship.visible;
+  if (!(offLeft || offRight || notVisible)) {
+    // ship appears to be on-screen — do nothing
+    return;
+  }
+  // Play the fly-off sound as a one-shot and ensure audio context resumed
+  try {
+    if (this.sound && this.sound.context && this.sound.context.state === 'suspended') {
+      this.sound.context.resume().then(() => {
+        this.sound.play('audio_flyoff', { loop: false, volume: 1.0 });
+      }).catch(() => {
+        this.sound.play('audio_flyoff', { loop: false, volume: 1.0 });
+      });
+    } else {
+      this.sound.play('audio_flyoff', { loop: false, volume: 1.0 });
+    }
+  } catch (e) {
+    // ignore audio errors
+  }
+
+  // Determine start and target positions
+  const startX = -(this.sprite_spaceship.displayWidth || 200);
+  const centerX = Math.round(this.scale.width / 2);
+  const centerY = Math.round(this.scale.height / 2);
+
+  // Make the ship visible and place it off-screen left
+  this.sprite_spaceship.setVisible(true);
+  if (this._spaceshipEntryTween) {
+    this._spaceshipEntryTween.stop();
+    this._spaceshipEntryTween = null;
+  }
+  if (this.sprite_spaceship.body) {
+    this.sprite_spaceship.setPosition(startX, centerY);
+    this.sprite_spaceship.setVelocity(0, 0);
+  } else {
+    this.sprite_spaceship.x = startX;
+    this.sprite_spaceship.y = centerY;
+  }
+
+  // Start flying animation if available
+  if (this.anims.exists('shipFly')) {
+    this.sprite_spaceship.play('shipFly');
+  }
+
+  // Tween a small object and update the Matter sprite position each frame
+  const distance = Math.abs(centerX - startX);
+  const speed = 600; // px/sec
+  const duration = Math.max(250, Math.round((distance / speed) * 1000));
+  const tweenObj = { x: startX };
+  this._spaceshipEntryTween = this.tweens.add({
+    targets: tweenObj,
+    x: centerX,
+    duration: duration,
+    ease: 'Quad.easeOut',
+    onUpdate: () => {
+      if (this.sprite_spaceship && this.sprite_spaceship.body) {
+        this.sprite_spaceship.setPosition(tweenObj.x, centerY);
+      } else if (this.sprite_spaceship) {
+        this.sprite_spaceship.x = tweenObj.x;
+        this.sprite_spaceship.y = centerY;
+      }
+    },
+    onComplete: () => {
+      if (this.sprite_spaceship && this.sprite_spaceship.body) {
+        this.sprite_spaceship.setPosition(centerX, centerY);
+        this.sprite_spaceship.setVelocityX(0);
+      } else if (this.sprite_spaceship) {
+        this.sprite_spaceship.x = centerX;
+        this.sprite_spaceship.y = centerY;
+      }
+      this._spaceshipEntryTween = null;
+    }
+  });
+ });
 
 
 
@@ -478,8 +595,10 @@ this.LEFT.on('down', () => {
 
 this.tileSprite_space.tilePositionX += 2;
 
-    // accelerate while right key held
-    if (this._spaceshipAccelerating && this.sprite_spaceship && this.sprite_spaceship.body) {
+    // When using tween-based exit, the tween drives the ship off-screen.
+    // No per-frame velocity enforcement is required here.
+    // accelerate while right key held (only when not in the forced fly-off mode)
+    if (!this._spaceshipFlyingOff && this._spaceshipAccelerating && this.sprite_spaceship && this.sprite_spaceship.body) {
       // delta is ms; convert to seconds
       const dt = delta / 1000;
       // increase speed
@@ -498,7 +617,7 @@ this.tileSprite_space.tilePositionX += 2;
     }
 
     // decelerate when not accelerating (natural slowdown)
-    if (!this._spaceshipAccelerating && this.sprite_spaceship && this.sprite_spaceship.body && this._spaceshipSpeed > 0) {
+    if (!this._spaceshipAccelerating && !this._spaceshipFlyingOff && this.sprite_spaceship && this.sprite_spaceship.body && this._spaceshipSpeed > 0) {
       const dt = delta / 1000;
       // reduce speed by decel * dt
       this._spaceshipSpeed -= this._spaceshipDecel * dt;
@@ -517,6 +636,8 @@ this.tileSprite_space.tilePositionX += 2;
         this._spaceshipAccelerating = false;
       }
     }
+
+ 
 
 
 
