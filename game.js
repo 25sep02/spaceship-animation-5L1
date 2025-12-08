@@ -192,34 +192,7 @@ class scene_B extends Phaser.Scene {
     this.LEFT = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.LEFT);
     this.SPACE = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
 
-    this.sprite_spaceship = this.matter.add.sprite(889, 496, 'spritesheet_spaceship', null, {
-    "isStatic": false,
-    "friction": 0.1,
-    "restitution": 0,
-    "frictionStatic": 0.5,
-    "density": 0.001,
-    "isSensor": false,
-    "slop": 0.05,
-    "ignoreGravity": true,
-    "frictionAir": 0.01,
-    "damping": 0,
-    "angularDamping": 0,
-    "sleepThreshold": 60,
-    "shape": {
-        "type": "rectangle",
-        "width": 32,
-        "height": 32,
-        "radius": 16,
-        "sides": 5,
-        "slope": 0.5,
-        "verts": []
-    },
-    "collisionFilter": {
-        "group": 0,
-        "category": 1,
-        "mask": 4294967295
-    }
-} );
+    this.sprite_spaceship = this.add.sprite(889, 496, 'spritesheet_spaceship');
     this.sprite_spaceship.setName('sprite_spaceship');
     this.sprite_spaceship.setAlpha(1);
     this.sprite_spaceship.setDepth(1);
